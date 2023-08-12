@@ -7,9 +7,31 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{C7F804C0-58A
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{9FFBAE91-6ABE-4A55-B916-08E9E61550E2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Escsoft.MongoDB.OData", "src\Escsoft.MongoDB.OData\Escsoft.MongoDB.OData.csproj", "{B258D003-0AE1-48B4-868C-4FA5E543CEDF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Escsoft.MongoDB.OData.API", "src\Escsoft.MongoDB.OData.API\Escsoft.MongoDB.OData.API.csproj", "{802FC426-D366-45EC-8323-FF8217425BF8}"
+EndProject
 Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B258D003-0AE1-48B4-868C-4FA5E543CEDF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B258D003-0AE1-48B4-868C-4FA5E543CEDF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B258D003-0AE1-48B4-868C-4FA5E543CEDF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B258D003-0AE1-48B4-868C-4FA5E543CEDF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{802FC426-D366-45EC-8323-FF8217425BF8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{802FC426-D366-45EC-8323-FF8217425BF8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{802FC426-D366-45EC-8323-FF8217425BF8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{802FC426-D366-45EC-8323-FF8217425BF8}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{B258D003-0AE1-48B4-868C-4FA5E543CEDF} = {C7F804C0-58AF-4E8C-A43D-3FD6AE13073E}
+		{802FC426-D366-45EC-8323-FF8217425BF8} = {C7F804C0-58AF-4E8C-A43D-3FD6AE13073E}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {4F5E67D6-BE90-4335-B854-8D4F7038241A}
