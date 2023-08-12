@@ -4,128 +4,131 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.OData.Extensions;
 using Microsoft.AspNetCore.OData.Query;
 using Microsoft.OData.Edm;
-using Microsoft.OData.Json;
 using MongoDB.Driver;
 using MongoDB.Driver.Linq;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 
-namespace Escsoft.MongoDB.OData;
-
-public sealed class MongoEnableQueryAttribute : EnableQueryAttribute
+namespace Escsoft.MongoDB.OData
 {
-    private static readonly MethodInfo s_applyProjectionMethodInfo = typeof(MongoEnableQueryAttribute).GetMethod(
-       nameof(ApplyProjection),
-       BindingFlags.Static | BindingFlags.NonPublic);
-
-    private static readonly MethodInfo s_applySelectExpandMethodInfo = typeof(MongoEnableQueryAttribute).GetMethod(
-        nameof(ApplySelectExpand),
-        BindingFlags.Static | BindingFlags.NonPublic);
-
-    public MongoEnableQueryAttribute()
+    public sealed class MongoEnableQueryAttribute : EnableQueryAttribute
     {
-        AllowedQueryOptions =
-            AllowedQueryOptions.Filter |
-            AllowedQueryOptions.Expand |
-            AllowedQueryOptions.Select |
-            AllowedQueryOptions.OrderBy |
-            AllowedQueryOptions.Top |
-            AllowedQueryOptions.Skip |
-            AllowedQueryOptions.Count |
-            AllowedQueryOptions.Compute;
-    }
+        private static readonly MethodInfo s_applyProjectionMethodInfo = typeof(MongoEnableQueryAttribute).GetMethod(
+           nameof(ApplyProjection),
+           BindingFlags.Static | BindingFlags.NonPublic);
 
-    public override IQueryable ApplyQuery(IQueryable queryable, ODataQueryOptions queryOptions)
-    {
-        if (queryable is not IMongoQueryable)
-            return base.ApplyQuery(queryable, queryOptions);
+        private static readonly MethodInfo s_applySelectExpandMethodInfo = typeof(MongoEnableQueryAttribute).GetMethod(
+            nameof(ApplySelectExpand),
+            BindingFlags.Static | BindingFlags.NonPublic);
 
-        var ignoreQueryOptions = AllowedQueryOptions.Select | AllowedQueryOptions.Expand;
-        queryable = queryOptions.ApplyTo(queryable,ignoreQueryOptions);
+        public MongoEnableQueryAttribute()
+        {
+            AllowedQueryOptions =
+                AllowedQueryOptions.Filter |
+                AllowedQueryOptions.Expand |
+                AllowedQueryOptions.Select |
+                AllowedQueryOptions.OrderBy |
+                AllowedQueryOptions.Top |
+                AllowedQueryOptions.Skip |
+                AllowedQueryOptions.Count |
+                AllowedQueryOptions.Compute;
+        }
 
-        if (queryOptions.Request.IsCountRequest())
+        public override IQueryable ApplyQuery(IQueryable queryable, ODataQueryOptions queryOptions)
+        {
+            if (queryable is not IMongoQueryable)
+                return base.ApplyQuery(queryable, queryOptions);
+
+            var ignoreQueryOptions = AllowedQueryOptions.Select | AllowedQueryOptions.Expand;
+            queryable = queryOptions.ApplyTo(queryable, ignoreQueryOptions);
+
+            if (queryOptions.Request.IsCountRequest())
+                return queryable;
+
+            queryable = ApplyTransformationMethod(s_applyProjectionMethodInfo, queryable, queryOptions);
+            if (queryOptions.SelectExpand != null)
+                queryable = ApplyTransformationMethod(s_applySelectExpandMethodInfo, queryable, queryOptions);
+
             return queryable;
 
-        queryable = ApplyTransformationMethod(s_applyProjectionMethodInfo,queryable,queryOptions);
-        if (queryOptions.SelectExpand != null)
-            queryable = ApplyTransformationMethod(s_applySelectExpandMethodInfo, queryable, queryOptions);
-
-        return queryable;
-
-    }
-
-    public override void OnActionExecuted(ActionExecutedContext actionExecutedContext)
-    {
-        var originalMongoQueryable = (actionExecutedContext.Result as ObjectResult)?.Value as IMongoQueryable;
-        base.OnActionExecuted(actionExecutedContext);
-
-        var response = actionExecutedContext.HttpContext.Response;
-        if (response?.IsSuccessStatusCode() == true && actionExecutedContext.Result is ObjectResult responseContent)
-        {
-            if (responseContent.Value is not IMongoQueryable mongoQueryable || originalMongoQueryable != mongoQueryable)
-                return;
-
-
-            // If response was not transformed by the base EnableQuery attribute,
-            // we still want force apply projection to limit MQL request to structural properties only
-            var queryOptions = (ODataQueryOptions)response.HttpContext.Items[nameof(ODataQueryOptions)];
-            ApplyTransformationMethod(s_applyProjectionMethodInfo, mongoQueryable, queryOptions);
-        }
-    }
-
-    public override void ValidateQuery(HttpRequest request, ODataQueryOptions queryOptions)
-    {
-        base.ValidateQuery(request, queryOptions);
-
-        // Store this into the http context in case we will need to enforce projection
-        request.HttpContext.Items[nameof(ODataQueryOptions)] = queryOptions;
-    }
-
-    private static IQueryable ApplyProjection<T>(IMongoQueryable<T> queryable,ODataQueryOptions queryOptions)
-    {
-        var fieldProjects = new List<ProjectionDefinition<T>>();
-        var entityType = queryOptions.Context.NavigationSource.EntityType();
-
-        if(queryOptions.Compute != null || 
-            queryOptions.SelectExpand == null ||
-            queryOptions.SelectExpand.SelectExpandClause.AllSelected)
-        {
-            fieldProjects.Add(entityType.StructuralProperties().Project<T>());
         }
 
-        if (queryOptions.SelectExpand != null)
+        public override void OnActionExecuted(ActionExecutedContext actionExecutedContext)
         {
-            foreach (var selectedItem in queryOptions.SelectExpand.SelectExpandClause.SelectedItems)
+            var originalMongoQueryable = (actionExecutedContext.Result as ObjectResult)?.Value as IMongoQueryable;
+            base.OnActionExecuted(actionExecutedContext);
+
+            var response = actionExecutedContext.HttpContext.Response;
+            if (response?.IsSuccessStatusCode() == true && actionExecutedContext.Result is ObjectResult responseContent)
             {
-                var translator = new MongoProjectionSelectItemTranslator<T>(queryOptions.Context);
-                fieldProjects.Add(selectedItem.TranslateWith(translator));
+                if (responseContent.Value is not IMongoQueryable mongoQueryable || originalMongoQueryable != mongoQueryable)
+                    return;
+
+
+                // If response was not transformed by the base EnableQuery attribute,
+                // we still want force apply projection to limit MQL request to structural properties only
+                var queryOptions = (ODataQueryOptions)response.HttpContext.Items[nameof(ODataQueryOptions)];
+                ApplyTransformationMethod(s_applyProjectionMethodInfo, mongoQueryable, queryOptions);
             }
         }
 
-        var projection = fieldProjects.Combine();
-        var projectionStage = PipelineStageDefinitionBuilder.Project<T, T>(projection);
-        return queryable.AppendStage(projectionStage);
-    }
-
-    private static IQueryable ApplySelectExpand<T>(IMongoQueryable<T> queryable,ODataQueryOptions queryOptions)
-    {
-        // SelectExpand projection generated by oData library is not compatible with Mongo LINQ provider,
-        // so we split the query to server and client side queries, where SelectExpand with be executed on the client side.
-        var wrappedQueryable = queryable.ToEnumerable().AsQueryable();
-
-        var allowedOptions = AllowedQueryOptions.Search | AllowedQueryOptions.Expand | AllowedQueryOptions.Compute;
-        var ignoreOption = AllowedQueryOptions.All & ~allowedOptions;
-        return queryOptions.ApplyTo(wrappedQueryable, ignoreOption);
-    }
-
-    private IQueryable ApplyTransformationMethod(MethodInfo method, IQueryable queryable, ODataQueryOptions queryOptions)
-    {
-        if (queryable is not IMongoQueryable)
+        public override void ValidateQuery(HttpRequest request, ODataQueryOptions queryOptions)
         {
-            throw new ArgumentException("IMongoQueryable is expected.", nameof(queryable));
+            base.ValidateQuery(request, queryOptions);
+
+            // Store this into the http context in case we will need to enforce projection
+            request.HttpContext.Items[nameof(ODataQueryOptions)] = queryOptions;
         }
 
-        var genericMethod = method.MakeGenericMethod(queryable.ElementType);
-        return (IQueryable)genericMethod.Invoke(null, new object[] { queryable, queryOptions });
+        private static IQueryable ApplyProjection<T>(IMongoQueryable<T> queryable, ODataQueryOptions queryOptions)
+        {
+            var fieldProjects = new List<ProjectionDefinition<T>>();
+            var entityType = queryOptions.Context.NavigationSource.EntityType();
+
+            if (queryOptions.Compute != null ||
+                queryOptions.SelectExpand == null ||
+                queryOptions.SelectExpand.SelectExpandClause.AllSelected)
+            {
+                fieldProjects.Add(entityType.StructuralProperties().Project<T>());
+            }
+
+            if (queryOptions.SelectExpand != null)
+            {
+                foreach (var selectedItem in queryOptions.SelectExpand.SelectExpandClause.SelectedItems)
+                {
+                    var translator = new MongoProjectionSelectItemTranslator<T>(queryOptions.Context);
+                    fieldProjects.Add(selectedItem.TranslateWith(translator));
+                }
+            }
+
+            var projection = fieldProjects.Combine();
+            var projectionStage = PipelineStageDefinitionBuilder.Project<T, T>(projection);
+            return queryable.AppendStage(projectionStage);
+        }
+
+        private static IQueryable ApplySelectExpand<T>(IMongoQueryable<T> queryable, ODataQueryOptions queryOptions)
+        {
+            // SelectExpand projection generated by oData library is not compatible with Mongo LINQ provider,
+            // so we split the query to server and client side queries, where SelectExpand with be executed on the client side.
+            var wrappedQueryable = queryable.ToEnumerable().AsQueryable();
+
+            var allowedOptions = AllowedQueryOptions.Search | AllowedQueryOptions.Expand | AllowedQueryOptions.Compute;
+            var ignoreOption = AllowedQueryOptions.All & ~allowedOptions;
+            return queryOptions.ApplyTo(wrappedQueryable, ignoreOption);
+        }
+
+        private IQueryable ApplyTransformationMethod(MethodInfo method, IQueryable queryable, ODataQueryOptions queryOptions)
+        {
+            if (queryable is not IMongoQueryable)
+            {
+                throw new ArgumentException("IMongoQueryable is expected.", nameof(queryable));
+            }
+
+            var genericMethod = method.MakeGenericMethod(queryable.ElementType);
+            return (IQueryable)genericMethod.Invoke(null, new object[] { queryable, queryOptions });
+        }
+
     }
- 
 }
