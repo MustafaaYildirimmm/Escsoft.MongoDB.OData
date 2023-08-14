@@ -5,6 +5,8 @@
 	  <OutputType>Library</OutputType>
 	  <NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
 	  <IsPackable>true</IsPackable>
+	  <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+	  <Title>MongoDb.Odata</Title>
   </PropertyGroup>
 
   <ItemGroup>
